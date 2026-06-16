@@ -62,60 +62,6 @@ class RACClientConsumer(AsyncWebsocketConsumer):
             },
         )
 
-    @database_sync_to_async
-    def init_outpost_connection(self):
-        """Initialize guac connection settings"""
-        self.token = (
-            ConnectionToken.filter_not_expired(
-                token=self.scope["url_route"]["kwargs"]["token"],
-                session__session__session_key=self.scope["session"].session_key,
-            )
-            .select_related("endpoint", "provider", "session", "session__user")
-            .first()
-        )
-        if not self.token:
-            raise DenyConnection()
-        self.provider = self.token.provider
-        params = self.token.get_settings()
-        self.logger = get_logger().bind(
-            endpoint=self.token.endpoint.name, user=self.scope["user"].username
-        )
-        msg = {
-            "type": "event.provider.specific",
-            "sub_type": "init_connection",
-            "dest_channel_id": self.channel_name,
-            "params": params,
-            "protocol": self.token.endpoint.protocol,
-        }
-        query = QueryDict(self.scope["query_string"].decode())
-        for key in ["screen_width", "screen_height", "screen_dpi", "audio"]:
-            value = query.get(key, None)
-            if not value:
-                continue
-            msg[key] = str(value)
-        outposts = Outpost.objects.filter(
-            type=OutpostType.RAC,
-            providers__in=[self.provider],
-        )
-        if not outposts.exists():
-            self.logger.warning("Provider has no outpost")
-            raise DenyConnection()
-        for outpost in outposts:
-            # Sort all states for the outpost by connection count
-            states = sorted(
-                OutpostState.for_outpost(outpost),
-                key=lambda state: int(state.args.get("active_connections", 0)),
-            )
-            if len(states) < 1:
-                continue
-            self.logger.debug("Sending out connection broadcast")
-            async_to_sync(self.channel_layer.group_send)(
-                OUTPOST_GROUP_INSTANCE % {"outpost_pk": str(outpost.pk), "instance": states[0].uid},
-                msg,
-            )
-        if self.provider and self.provider.delete_token_on_disconnect:
-            self.logger.info("Deleting connection token to prevent reconnect", token=self.token)
-            self.token.delete()
 
     async def receive(self, text_data=None, bytes_data=None):
         """Mirror data received from client to the dest_channel_id
