@@ -62,6 +62,13 @@ class RACClientConsumer(AsyncWebsocketConsumer):
             },
         )
 
+    def init_outpost_connection(self):
+        """Initialize guac connection settings"""
+        self.token = (
+            ConnectionToken.filter_not_expired(token=self.scope["url_route"]["kwargs"]["token"])
+            .select_related("endpoint", "provider", "session", "session__user")
+            .first()
+        )
 
     async def receive(self, text_data=None, bytes_data=None):
         """Mirror data received from client to the dest_channel_id
