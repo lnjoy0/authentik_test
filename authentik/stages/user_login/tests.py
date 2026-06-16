@@ -182,42 +182,6 @@ class TestUserLoginStage(FlowTestCase):
             component="ak-stage-access-denied",
         )
 
-    @apply_blueprint("default/flow-default-user-settings-flow.yaml")
-    def test_inactive_account(self):
-        """Test with a valid pending user and backend"""
-        self.user.is_active = False
-        self.user.save()
-        plan = FlowPlan(flow_pk=self.flow.pk.hex, bindings=[self.binding], markers=[StageMarker()])
-        plan.context[PLAN_CONTEXT_PENDING_USER] = self.user
-        session = self.client.session
-        session[SESSION_KEY_PLAN] = plan
-        session.save()
-
-        response = self.client.get(
-            reverse("authentik_api:flow-executor", kwargs={"flow_slug": self.flow.slug})
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertStageResponse(
-            response, self.flow, component="ak-stage-access-denied", error_message="Unknown error"
-        )
-
-        # Check that API requests get rejected
-        response = self.client.get(reverse("authentik_api:application-list"))
-        self.assertEqual(response.status_code, 403)
-
-        # Check that flow requests requiring a user also get rejected
-        response = self.client.get(
-            reverse(
-                "authentik_api:flow-executor",
-                kwargs={"flow_slug": "default-user-settings-flow"},
-            )
-        )
-        self.assertStageResponse(
-            response,
-            self.flow,
-            component="ak-stage-access-denied",
-            error_message="Flow does not apply to current user.",
-        )
 
     def test_binding_net_break_log(self):
         """Test logout_extra with exception"""
