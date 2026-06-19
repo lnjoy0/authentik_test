@@ -61,10 +61,7 @@ def user_logged_out_session(sender, request: HttpRequest, user: User, **_):
     AuthenticatedSession.objects.filter(session_key=request.session.session_key).delete()
 
 
-@receiver(pre_delete, sender=AuthenticatedSession)
-def authenticated_session_delete(sender: type[Model], instance: "AuthenticatedSession", **_):
-    """Delete session when authenticated session is deleted"""
-    SessionStore(instance.session_key).delete()
+
 
 
 @receiver(pre_save)
