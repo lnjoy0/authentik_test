@@ -5,7 +5,6 @@ from contextvars import ContextVar
 from functools import partial
 from uuid import uuid4
 
-from django.contrib.auth import logout
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpRequest, HttpResponse
@@ -58,11 +57,6 @@ class AuthenticationMiddleware(MiddlewareMixin):
             )
         request.user = SimpleLazyObject(lambda: get_user(request))
         request.auser = partial(aget_user, request)
-
-        user = request.user
-        if user and user.is_authenticated and not user.is_active:
-            logout(request)
-            raise AssertionError()
 
 
 class ImpersonateMiddleware:
