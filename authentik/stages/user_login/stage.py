@@ -138,3 +138,48 @@ class UserLoginStageView(ChallengeStageView):
             self.logger.info("eh", exc=exc)
             return False
 
+    def do_login(self, request: HttpRequest, remember: bool | None = None) -> HttpResponse:
+        """Attach the currently pending user to the current session.
+        `remember` Argument should be `None` if not configured, otherwise set to `True`/`False`
+        representative of the user's choice."""
+        if PLAN_CONTEXT_PENDING_USER not in self.executor.plan.context:
+            message = _("No Pending user to login.")
+            messages.error(request, message)
+            self.logger.warning(message)
+            return self.executor.stage_invalid()
+        backend = self.executor.plan.context.get(
+            PLAN_CONTEXT_AUTHENTICATION_BACKEND, BACKEND_INBUILT
+        )
+        user: User = self.executor.plan.context[PLAN_CONTEXT_PENDING_USER]
+        if not user.is_active:
+            self.logger.warning("User is not active, login will not work.")
+            return self.executor.stage_invalid()
+        delta = self.set_session_duration(bool(remember))
+        self.set_session_ip()
+        # Check if the login request is coming from a known device
+        self.executor.plan.context.setdefault(PLAN_CONTEXT_METHOD_ARGS, {})
+        self.executor.plan.context[PLAN_CONTEXT_METHOD_ARGS].setdefault(
+            PLAN_CONTEXT_METHOD_ARGS_KNOWN_DEVICE, self.is_known_device(user)
+        )
+        # the `user_logged_in` signal will update the user to write the `last_login` field
+        # which we don't want to log as we already have a dedicated login event
+        with audit_ignore():
+            login(
+                self.request,
+                user,
+                backend=backend,
+            )
+        self.logger.debug(
+            "Logged in",
+            backend=backend,
+            user=user.username,
+            flow_slug=self.executor.flow.slug,
+            session_duration=delta,
+        )
+        if self.executor.current_stage.terminate_other_sessions:
+            Session.objects.filter(
+                authenticatedsession__user=user,
+            ).exclude(session_key=self.request.session.session_key).delete()
+        if remember is None:
+            return self.set_known_device_cookie(user)
+        return self.executor.stage_ok()
