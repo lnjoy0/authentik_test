@@ -66,6 +66,16 @@ class RACInterface(InterfaceView):
     template_name = "if/rac.html"
     token: ConnectionToken
 
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        # Early sanity check to ensure token still exists
+        token = ConnectionToken.filter_not_expired(
+            token=self.kwargs["token"],
+            session__session__session_key=request.session.session_key,
+        ).first()
+        if not token:
+            return redirect("authentik_core:if-user")
+        self.token = token
+        return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         kwargs["token"] = self.token
